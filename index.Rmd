@@ -1,0 +1,90 @@
+---
+title: Coursera Practical Machine Learning Project
+output: html_document
+---
+# Summary
+This project attempts to predict exercise (barbell lifts) quality based on accelerometer data from six users. Each subject performed the exercise correctly and in five different incorrect ways while data was being collected. The source of the data is a paper which can be found here:  http://groupware.les.inf.puc-rio.br/har. A machine 
+learning model will be developed to predict exercise quality and this model will be applied to a small (20 records) data set and submitted for grading.
+
+#Creating the Model
+The caret package will be used to develop a prediction model.
+
+```{r cache = TRUE}
+library(caret)
+```
+
+## Reading the Data
+
+```{r cache = TRUE}
+if (!file.exists("pml-training.csv")){
+    url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    download.file(url, destfile = "pml-training.csv", method = "curl")
+}
+
+data <- read.csv("pml-training.csv")
+
+if (!file.exists("pml-testing.csv")){
+    url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+    download.file(url, destfile = "pml-testing.csv", method = "curl")
+}
+
+validate <- read.csv("pml-testing.csv")
+
+```
+
+## Cleaning the Data
+The data set contains aggregate data in the rows where new window = yes. This data will not be included in the model so those rows will be removed. This results in many columns with no data so these variables will also be removed. Finally, columns 1, 3, 4, 5, and 6 contain metadata (row numbers, timestamps etc.) and thus were also removed. Since source article expressed some doubt as to whether this data could be applied to other users, the user_name variable was kept.
+
+```{r cache = TRUE}
+data <- data[data$new_window=="no",]
+data <- data[,-(nearZeroVar(data))]
+data <- data[,-(c(1,3,4,5,6))]
+```
+
+## Partitioning the Data
+The caret package performs cross validation automatically and this will provide an estimate of out-of-sample error. However, since there is quite a bit of data in this data set, a portion of the data will be held out and the used to test the model and provide a better estimate of the error. The rest of the data will be used to train the model.
+
+```{r cache = TRUE}
+inTrain <- createDataPartition(y=data$classe, p=0.75, list=F)
+train <- data[inTrain,]
+test <- data[-inTrain,]
+```
+## Building the Model
+The cross validation method was changed from the default bootstrap to a repeated k-fold method. Five folds are used and repeated 3 times. A random forest algorithm was chosen because it is known to be highly accurate. The classe variable contains the exercise quality data that we are trying to predict.
+
+```{r cache = TRUE}
+if (!file.exists("rfmodel.rds")){
+    set.seed(811)
+    ctrl <- trainControl(method = "repeatedcv", number=5, repeats=3)
+    model <- train(classe~., data=train,method="rf", trControl=ctrl, prox=TRUE)
+    saveRDS(model, "rfmodel.rds")
+} else {    
+model <- readRDS("rfmodel.rds")
+}
+```
+
+# Error Estimates
+ A confusion matrix was generated on the final model. The accuracy, out of bag error rate and Kappa statistics show a very low error rate. 
+
+```{r cache=TRUE}
+model
+model$finalModel
+```
+
+The model was then used to predict the values for the held out data partition. Again the error estimates are quite low.
+
+```{r cache=TRUE}
+pred <- predict(model, test)
+table(pred, test$classe)
+correct <- pred==test$classe
+accuracy <- sum(correct)/nrow(test)
+accuracy
+```
+
+
+# Project Submission
+The model was applied to the 20 cases in the project test set. All predictions were accurate.
+
+```{r cache = TRUE}
+predict(model, validate)
+```
